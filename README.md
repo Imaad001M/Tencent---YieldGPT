@@ -1,154 +1,92 @@
-# The Internal Brain
+# YieldGPT — integrated team delivery
 
-Entry for the **Aspire FinTech track**, AI CAN DO IT Tencent Cloud Hackathon Singapore 2026.
+This project integrates Member 2’s retrieval and answer checks with the supplied **Tencent---YieldGPT-main.zip**, including Member 3’s encrypted audit log, protected checkpoint adapter, compliance console and delivery controls. The previous project is preserved separately.
 
-> The Internal Brain: a context-aware enterprise knowledge system with RBAC, security logging and audit trail.
+The default is a local Company A demonstration: Confluence, Jira, Slack and Drive fixtures with different native permission rules. A model can select evidence passages; the server reconstructs the factual text and citations from authorized source snapshots. Retrieval can run locally or as hybrid lexical + Tencent Cloud VectorDB semantic search. Real credentials are intentionally placeholders.
 
-It answers natural-language questions across **Confluence, Jira, Slack and Google Drive**, while every
-piece of content respects the source platform's own permissions, and every retrieval and answer is
-recorded in a tamper-evident, queryable audit trail.
+## Run locally
 
-This repo runs fully offline: the four platforms are simulated (`app/sources/world.py`) with realistic,
-fictional Company A data, and the LLM has an offline stand-in until Hunyuan keys are added.
+Python 3.11+; this delivery was tested with Python 3.14.
 
-## Quick start
-
-```bash
-pip install -r requirements.txt
-uvicorn app.main:app --reload        # open http://localhost:8000
-python -m pytest -q                  # 90 tests: scenarios, security, connector contract, handoff
-python -m pytest tests/contract -q   # just the connector contract every adapter must pass
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-lock.txt
+cp .env.example .env
+python -m uvicorn app.server:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
 ```
 
-Demo users (password `demo`):
+Open http://127.0.0.1:8000. On Windows use `.venv\Scripts\activate`. Choose a demo persona; passwords are `demo`. `.env` loads automatically, and exported variables take precedence. Never commit real `.env` files. Use `IB_ENV_FILE` to select another settings file.
 
-| User | Who | Sees |
+**Always use `app.server:app`.** Direct `app.main` startup is rejected. Questions, citation previews and replayed answers pass through Member 3’s checkpoint-before-release middleware. A checkpoint failure returns a generic 503 and withholds the answer.
+
+| Account | Role | Source access example |
 |---|---|---|
-| `jdoe` | Backend engineer | Eng docs, MIG + PAY Jira (not security-level issues), channels she's in |
-| `ravi` | SRE, payments on-call | Payment gateway space, private #payments-oncall and #mig-leads |
-| `asha` | Security engineer | Security space, SEC project, security-level issues, #sec-incidents |
-| `kim` | External contractor | Only the shared vendor channel and externally shared Drive folder |
-| `priya` | Compliance officer | Can query the audit trail |
-| `dana` | Platform admin | Demo controls + audit metadata only. Admin grants no source access and no audit content |
+| jdoe | Backend engineer | Engineering documentation and team conversations |
+| ravi | Payments on-call | Payments runbooks and private on-call conversations |
+| asha | Security engineer | Restricted security reports |
+| kim | Contractor | Vendor-shared material only |
+| priya | Compliance officer | Audit content; no automatic access to source documents |
+| dana | Platform administrator | Operations and audit metadata; no automatic source access |
 
-## Architecture
+Ask about migration progress and Slack blockers, payment-outage follow-up tickets, or ADR-17. Open a citation. Use **Previous questions** to rerun a prior question with current permissions and current content. The history list exposes timestamps and query IDs, never old answers or source titles. It survives server restart and is separate from the five-minute citation-preview cache. Audit-content retention limits replay availability.
 
-```
-            +------------------------- TRUST BOUNDARY: Internal Brain ---------------------------+
- user --SSO-->  Identity (user, groups)                                                           |
-            |       |                                                                             |
-            |   question --> input guard --> planner --> fan-out search (unified index)           |
-            |                                                  |                                  |
-            |                                   prefilter on ACL hint (fast, may be stale)        |
-            |                                                  |                                  |
-            |                           link expansion (Jira -> Slack/Confluence/Drive)           |
-            |                                                  |                                  |
-            |   +---- LIVE native authz per doc  <----------------------------+                   |
-            |   |     (Confluence space+page | Jira role+security level |    |                   |
-            |   |      Slack membership | Drive folder-chain shares)     connectors ---> platform |
-            |   |                                                              |     APIs         |
-            |   +---- read-through freshness (newer version? use + reindex) --+                   |
-            |                                                  |                                  |
-            |                           poison scan --> rank + context budget                    |
-            |                                                  |                                  |
-            |  - - - - - - - - - - - - TRUST BOUNDARY: LLM (untrusted) - - - - - - - - - - - - -  |
-            |                  LLM sees ONLY permitted, fresh, scanned chunks                     |
-            |  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  |
-            |                                                  |                                  |
-            |                grounding check --> output redaction --> answer + citations          |
-            |                                                                                     |
-            |   every step --> hash-chained audit log --> anchors --> external WORM storage       |
-            +-------------------------------------------------------------------------------------+
+Operations are at `/console`; the integrated compliance screen is `/compliance`.
 
- platforms --webhooks (signed)--> sync --> index        poller every 5 min (backstop) --> index
+## Verification and measured results
+
+```sh
+python -m pytest -q
+python scripts/compare.py
+python scripts/evaluate.py --json evaluation/reports/offline-evaluation.json --markdown evaluation/reports/offline-evaluation.md
+python scripts/benchmark.py --size full --json evaluation/reports/synthetic-benchmark.json --markdown evaluation/reports/synthetic-benchmark.md
+python scripts/judging_demo.py --markdown docs/WORKED_EXAMPLES.md --json evaluation/reports/judging-scenarios.json
 ```
 
-**Trust boundaries**
-1. *Platforms to Brain*: webhooks must carry a valid signature. Content from platforms is **untrusted data**
-   (it can contain injected instructions), so it's scanned before reaching the model.
-2. *Brain to LLM*: the LLM is treated as untrusted. It never sees unauthorised content, and its output is not
-   trusted until the grounding check passes.
-3. *Brain to audit store*: the app can append but anchors live outside its control, so even the app itself
-   can't silently rewrite history.
+The controlled comparison runs the original Member 1 lexical pipeline and the current pipeline on the **same** current fixtures and 65 question expectations. It measures **50/65 → 65/65** passing questions and **85.7% → 100%** required-source recall. The separate 28-case grounding category measures **15/28 → 28/28**, with false accepts falling from 13 to zero. Neither pipeline exposed unauthorized citations/context in this fixture set. This is a reconstructed offline comparison, not historical production evidence.
 
-## How each scenario is solved
+The integrated automated suite passes **318 tests**, with four real-S3 checks skipped because no endpoint is configured.
 
-| # | Scenario | Mechanism | Code | Test |
-|---|---|---|---|---|
-| 1 | Unified query | Planner picks platforms, per-platform search, blended ranking, link expansion stitches Jira to Slack/Confluence/Drive, citations with URLs | `planner.py`, `brain.py` | `test_s1_*` |
-| 2 | Freshness | Webhooks (seconds) + polling backstop (5 min) + read-through version check at query time, so a retrieved doc is never older than the source | `sync.py`, `brain._authorize_and_refresh` | `test_s2_*` |
-| 3 | Negative cases | Prefilter + live native checks. Fully denied queries return the exact same text as "no matches", no citations, no hint | `connectors.py`, `grounding.py` | `test_s3_*` |
-| 4 | Live revocation | Authorization is re-checked against the platform at query time, not trusted from the index | `connectors.check` | `test_s4_*` |
-| 5 | Audit inquiry | Denormalised, hash-chained log; NL question to filters; reconstructs question, per-doc decisions and answer | `audit.py` | `test_s5_*` |
+See [the comparison](evaluation/reports/comparison.md), [current per-case measurements](evaluation/reports/current.json), [integration review](docs/INTEGRATION_REVIEW.md) and [evaluation methods](docs/EVALUATION.md). The 19,700-object synthetic benchmark measures the local index only.
 
-**LLM safety**: system prompt requires per-sentence citations, then `grounding.py` independently drops any claim
-that cites nothing, cites a source not provided, or doesn't overlap with its cited source. Retrieved content is
-scanned for injection before the model sees it.
+The [submission success metrics](docs/SUBMISSION_SUCCESS_METRICS.md) define the numeric go/no-go gates for security, answer quality, latency, cost, freshness, audit integrity, live services, and demo readiness. The [160-question trial bank](docs/TRIAL_QUESTION_BANK.md) covers all four sources, cross-source synthesis, each persona, revocation, replay, grounding, missing evidence, and adversarial prompts.
 
-**Security logging**: denials, injection attempts, poisoned content, rejected webhooks, app-permission failures,
-and a *probing* alert when a user racks up many denials in 10 minutes.
+## Approved model and live evaluation
 
-## Key design trade-offs
+Edit `.env`: set `IB_LLM_PROVIDER=openai_compatible`, `IB_LLM_REQUIRE_LIVE=1`, and replace `IB_LLM_BASE_URL`, `IB_LLM_MODEL`, `IB_LLM_API_KEY` with your approved account settings. The adapter calls `/chat/completions`. HTTPS is required except on localhost. Price settings are optional actual per-million-token rates; missing prices or usage are recorded as unknown, never a fictitious zero cost.
 
-- **Don't flatten permissions.** The index stores a coarse `acl_hint` for speed, but the decision always comes from
-  each platform's native rules (`check()`). Flattening would lose things like Confluence restriction inheritance
-  and Jira issue security levels.
-- **Two-stage authz.** Prefilter keeps cost down; live check guarantees correctness. A stale hint that is *too
-  permissive* is caught by the live check. A stale hint that is *too restrictive* (access granted after sync)
-  hides the doc until the next sync. That is fail-closed, which is the right direction.
-- **Live checks cost API calls.** In production, cache permission results with a short TTL (e.g. 60s) and
-  invalidate on permission-change webhooks. The TTL is the explicit revocation window.
-- **Freshness vs cost.** Webhooks for speed, polling for reliability, read-through for correctness on retrieved
-  docs. Worst-case staleness equals the poll interval, well inside the 1-hour requirement.
-- **Neutral refusals over helpful ones.** Saying "you don't have access to X" is friendlier but confirms X exists.
-  We log the denial and say nothing.
-- **Slack threads, not messages, are the unit.** Replies lose meaning without their root.
-- **Time windows apply to Slack only.** "Last week" narrows conversations, but a year-old runbook is still the
-  current runbook.
-
-## Project layout
-
-```
-app/
-  sources/base.py         THE connector contract (rules R1..R10)
-  sources/{confluence,jira,slack,gdrive}.py   one adapter per platform, one owner each
-  sources/world.py        simulated platforms with native permission models, change feed, outages
-  sync_state.py           sync bookkeeping (cursors, change records, tombstones)
-  audit_policy.py         who can read the audit trail, and how much
-  identity.py             users, groups, tokens
-  index.py                unified search index (TF-IDF now, vector DB later)
-  sync.py                 webhooks + polling
-  planner.py              platform routing + time windows
-  brain.py                the end-to-end pipeline
-  llm.py                  Hunyuan (OpenAI-compatible) or offline stub
-  grounding.py            claim-level citation enforcement
-  guard.py                injection detection + redaction
-  audit.py                hash chain, anchors, queries, NL parser
-  main.py                 FastAPI routes
-  static/index.html       demo UI (ask, demo controls, audit console)
-tests/                    scenario + security tests
+```sh
+python scripts/evaluate.py --mode live --json evaluation/reports/live-model.json --markdown evaluation/reports/live-model.md
 ```
 
-## Plugging in real services
+This runs 65 regression cases plus 13 additional paraphrase/adversarial probes, and the grounding category. Answerable cases must actually use the remote model. Offline fallback cannot produce a live pass. Missing credentials return exit code 2 and a **NOT RUN** report. Failed checks return 1. Model HTTP latency, total model elapsed time, retries, token usage and estimated cost are recorded separately from authorization/read and final release checks in the audit and JSON results. Timings are nested and must not be summed.
 
-```bash
-export IB_LLM_PROVIDER=openai_compatible
-export IB_LLM_BASE_URL=...      # Hunyuan endpoint from your Tencent Cloud console
-export IB_LLM_API_KEY=...
-export IB_LLM_MODEL=...
-```
+The current saved live report is **not run**, because credentials remain placeholders. See [Tencent requirements and model setup](docs/TENCENT_REQUIREMENTS.md). Exact organizer service requirements still need confirmation before deployment.
 
-Replacing a simulated platform means implementing the connector contract in `app/sources/base.py`
-(`start_cursor`, `list_page`, `changes_since`, `fetch`, `acl_hint`, `_check`) against the real API and
-passing `tests/contract`. Sync, retrieval and authorization only ever call those methods.
+## Slack and team integration
 
-Team handoff notes live in `docs/`.
+[Slack setup](docs/SLACK_MEMBER2.md) covers multiple workspaces, `TEAM/USER` identities, `TEAM/CHANNEL/THREAD` resource IDs, delegated reads, encrypted OAuth installs, single-use state, refresh rotation, signed events and 15-minute reconciliation. The common contract suite exercises DMs, public-channel scope, edits, deletion and retention on simulated and mocked HTTP implementations. A separate [live verifier](scripts/verify_live_slack.py) records real-workspace checks once configured.
 
-## Roadmap
+This is implemented code, not a documentation-only design. The live connector is `app/sources/slack_live.py`, multi-workspace routing is `app/sources/slack_multi.py`, runtime configuration is `app/slack_runtime.py`, OAuth storage is `app/slack_oauth.py`, signed events are handled by `app/sources/slack_events.py`, and background maintenance is `app/slack_worker.py`. `app.main` installs the connector and event route; `app.server` adds OAuth routes. These files are in the editable project folder and the downloadable ZIP.
 
-1. Hunyuan for answers, planning (function calling) and audit NL queries
-2. Embeddings + Tencent Cloud VectorDB, ACL hint as a metadata filter
-3. One real connector (Slack or Confluence have free tiers) to prove the pattern beyond simulation
-4. Permission cache with TTL + permission-change webhooks
-5. Agent actions: "request access" routed to the resource owner, never auto-granted
-6. Persistent index and DB (Postgres), rate limiting, real SSO
+## Tencent VectorDB retrieval
+
+Set `IB_VECTOR_PROVIDER=tencent` and the `IB_VECTOR_*` values in `.env`, then create or check the collection with `python scripts/setup_vector_db.py`. The adapter chunks documents, batches full-crawl updates, uses Tencent's managed Embedding field, adds HNSW/COSINE semantic candidates, and fuses them with exact/lexical results. Vector rows carry ACL-hint principals and every result still passes the local hint check plus the connector's live native authorization before model context or citation release. If optional VectorDB indexing fails, semantic use is disabled for the process so stale vectors cannot be used.
+
+See [VectorDB setup and security](docs/VECTOR_SEARCH.md). The HTTP integration has mocked contract tests; it still needs approved Tencent credentials for a real-instance check.
+
+Member 3’s independent S3 Object Lock checkpoint implementation is included. Default local checkpoints are explicitly weaker; live WORM tests need a configured service. Read [Member 3 operations](docs/MEMBER3.md) and [the integration handoff](docs/HANDOFF_MEMBER2.md).
+
+## Boundaries
+
+- Production SSO is still a teammate integration. The seeded demo identity directory must be replaced before connecting real employees or sensitive company data.
+- Confluence, Jira and Drive remain simulated. Real Slack/model/OAuth/WORM deployments have not been verified in this integration session.
+- Conversation allowlists intentionally bound ingestion; multi-workspace support does not grant access to every private channel or DM. Slack itself authorizes every delegated read.
+- The default zero-credential mode is lexical. Tencent VectorDB hybrid retrieval is implemented but has not been run against a real instance in this session. Broad queries can still require many native permission calls; measure live throughput before scaling.
+- Grounding proves exact passage support, not source truth, complete answers, semantic entailment or perfect contradiction handling. Source dates remain visible.
+- Revocation takes effect at subsequent checks. Previously delivered text cannot be recalled, and the final distributed check-to-delivery race and timing side channels remain.
+- Freshness depends on successful events, polling, reconciliation, API budgets and source availability. There is no unconditional one-hour guarantee during outages.
+
+Security integration note: seeded demo login and demo-token verification are disabled outside demo mode or when live Slack configuration is present. Member 1 must supply the trusted identity provider before real-source employee access or OAuth linking. This guard prevents the public `demo` password from opening real company data.
+
+For UI work, follow [the Member 2 UI workflow](docs/UI_WORKFLOW.md). It identifies the three browser files to edit, the API contracts they consume, and the checks that preserve safe citation rendering and account switching.
