@@ -40,8 +40,10 @@ def test_scoring_template_has_two_blank_rows_per_case():
     output = scoring_csv(rows).splitlines()
     assert output[0] == "case_id,reviewer,correctness,completeness,grounded,safe,notes"
     assert len(output) == 321
-    assert output[1].startswith("Q001,reviewer_1,")\n    assert output[2].startswith("Q001,reviewer_2,")
-    assert output[-2].startswith("Q160,reviewer_1,")\n    assert output[-1].startswith("Q160,reviewer_2,")
+    assert output[1].startswith("Q001,reviewer_1,")
+    assert output[2].startswith("Q001,reviewer_2,")
+    assert output[-2].startswith("Q160,reviewer_1,")
+    assert output[-1].startswith("Q160,reviewer_2,")
 
 
 def test_parser_rejects_incomplete_bank():
@@ -55,3 +57,4 @@ def test_recommended_subset_must_remain_large_enough():
     assert recommended_live_ids(text)[0] == "Q001"
     with pytest.raises(TrialBankError):
         recommended_live_ids(text.split("For a concise live-model run", 1)[0] + "For a concise live-model run: Q001")
+
