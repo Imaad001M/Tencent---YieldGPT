@@ -37,3 +37,34 @@ h1,h2,h3{font-variation-settings:"wght" 700;letter-spacing:-.035em}
 .suggestion-card:nth-child(2) .card-icon{background:#f59e0b;color:#0f070b}
 .suggestion-card:nth-child(2):hover{border-color:#f59e0b;box-shadow:4px 4px 0 #f59e0b}
 .logo-loop__item:hover{color:#f59e0b}
+
+
+/* Additional workspace modules inherit the existing theme and typography. */
+.sidebar{overflow-y:auto}
+.workspace-tools{margin:16px 0 24px;flex-shrink:0}
+.workspace-tools .nav-heading{margin-top:20px;margin-bottom:8px}
+#command-button{justify-content:space-between;gap:6px}
+#command-button>span{font:inherit;white-space:nowrap}
+#recent-questions{display:grid;gap:6px;margin:0 10px 10px}
+.recent-question{text-align:left;overflow-wrap:anywhere}
+.source-connections{list-style:none;margin:0;padding:0 12px;display:grid;gap:8px}
+.source-connections li{display:flex;justify-content:space-between;gap:8px;font:inherit;color:var(--muted)}
+.connection-mode,.source-status{color:var(--teal-dark)}
+.source-status{display:block;font:inherit;margin-top:5px}
+.source-highlight{outline:2px solid var(--teal);outline-offset:2px}
+.evidence-access{color:var(--teal-dark);font:inherit}
+.demo-source-note{border-left:2px solid var(--line);padding-left:12px}
+.request-stages p{margin:0;font:inherit;color:var(--muted)}
+.request-stages-note{margin-top:6px!important}
+.content.has-answer .question-section{position:sticky;bottom:0;z-index:3;background:var(--cream);padding-top:16px;padding-bottom:12px;margin-top:24px}
+.content.has-answer .question-section textarea{min-height:60px}
+.answer-footer{flex-wrap:wrap;gap:12px}
+.command-dialog{width:min(560px,calc(100vw - 32px))}
+.command-dialog h2{font:inherit;margin:0}
+.command-dialog label{display:block;margin:18px 0 8px}
+.command-dialog input{width:100%;min-height:44px;padding:10px;background:var(--cream);color:inherit;border:1px solid var(--line);font:inherit}
+.command-results{display:grid;gap:8px;max-height:45vh;overflow-y:auto;margin-top:16px}
+.command-results .source-card{display:block;width:100%;text-align:left;overflow-wrap:anywhere}
+.command-results [aria-current=true]{outline:2px solid var(--teal);outline-offset:-2px}
+.mobile-tools{display:none;align-items:center;gap:8px}
+@media(max-width:650px){.mobile-tools{display:flex}.workspace-tools{display:none}.request-stages{grid-column:1/-1}.content.has-answer .question-section{bottom:0;padding-bottom:max(12px,env(safe-area-inset-bottom))}.command-dialog{padding:20px}.source-connections li{flex-wrap:wrap}}

@@ -8,6 +8,7 @@ approved parents. Citation previews are separately authorized on every request.
 from __future__ import annotations
 import contextvars
 import functools
+import re
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -193,6 +194,12 @@ class Brain:
         refs = set(grounding._CITE.findall(answer))
         citations = [{k:s[k] for k in ('ref','platform','title','url','container','updated_iso','uid','version')}
                      for s in sources if s['ref'] in refs]
+        for citation in citations:
+            source = next(s for s in sources if s['ref'] == citation['ref'])
+            if source['platform'] == 'jira':
+                match = re.match(r'^[^\n]*?\[(In Progress|Blocked|Done|Open)\]', source['text'], re.I)
+                if match:
+                    citation['status'] = match.group(1).title()
         summary_dropped = 0
         if citations:
             answer = conversation.present(answer, citations)
@@ -415,3 +422,4 @@ class Brain:
 
     def freshness(self, interval_s):
         return {"indexed_docs": len(self.index), "platforms": self.syncer.status(interval_s), "checked_at": time.time()}
+

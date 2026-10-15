@@ -38,15 +38,25 @@ try {
   assert.ok(await page.locator('.inline-citation').count() > 0);
   await page.locator('.inline-citation').first().click();
   await page.locator('.evidence-passage').first().waitFor();
-  assert.match(await page.locator('.evidence-link').getAttribute('href'), /^https:/);
-  assert.equal(await page.locator('.evidence-link').getAttribute('target'), '_blank');
+  assert.equal(await page.locator('.evidence-link').count(), 0);
+  assert.match(await page.locator('.demo-source-note').textContent(), /simulated/);
+  assert.match(await page.locator('.evidence-access').textContent(), /checked just now/);
   assert.equal(await page.locator('.evidence-followup').isVisible(), true);
   assert.equal(await page.locator('.evidence-copy').isVisible(), true);
   await page.locator('.evidence-followup').click();
   assert.equal(await page.locator('#evidence-dialog').isVisible(), false);
   assert.match(await page.locator('#question').inputValue(), /^Follow-up about/);
   assert.equal(await page.locator('#question').evaluate(element => element === document.activeElement), true);
-  pass('Real retrieval, actionable evidence drawer, new-tab source and grounded follow-up');
+  pass('Real retrieval, actionable evidence drawer, demo-source note and grounded follow-up');
+  await page.keyboard.press('Control+k');
+  await page.locator('#command-dialog').waitFor({state:'visible'});
+  await page.locator('#command-input').fill('New question');
+  await page.locator('#command-input').press('Enter');
+  assert.equal(await page.locator('#answer-section').isVisible(), false);
+  assert.equal(await page.locator('#question').inputValue(), '');
+  assert.match(await page.locator('#source-connections').textContent(), /Demo/);
+  assert.equal(await page.locator('#recent-section').isVisible(), true);
+  pass('Keyboard quick actions, new question, recent history and truthful source labels');
   await signIn('kim');
   assert.equal(await page.locator('#answer-section').isVisible(), false);
   assert.equal(await page.locator('#answer-body').textContent(), '');
@@ -94,6 +104,8 @@ try {
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.locator('#mobile-account').isVisible());
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+  assert.equal(await page.locator('#mobile-new-question').isVisible(), true);
+  assert.equal(await page.locator('#mobile-commands').isVisible(), true);
   await page.locator('#mobile-account').click();
   await page.locator('#dialog-logout').click();
   assert.equal(await page.locator('#mobile-account').textContent(), 'Sign in');
@@ -107,4 +119,5 @@ try {
   assert.deepEqual(errors, []);
   pass('No browser JavaScript errors');
 } finally { await browser.close(); }
+
 

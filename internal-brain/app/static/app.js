@@ -5,7 +5,7 @@
   const $ = id => document.getElementById(id);
   const state = { token: null, user: null, epoch: 0, askSerial: 0, evidenceSerial: 0,
     answer: null, question: '', askController: null, evidenceController: null,
-    loginController: null, pendingQuestion: '', controllers: new Set() };
+    loginController: null, pendingQuestion: '', sourceModes: {}, recentSerial: 0, controllers: new Set() };
   const personas = [
     { id: 'jdoe', name: 'Jane Doe', role: 'Backend engineer', initials: 'JD', note: 'Explore engineering decisions, project updates and team discussions.' },
     { id: 'ravi', name: 'Ravi Menon', role: 'Payments on-call', initials: 'RM', note: 'Investigate payment incidents, follow-up work and operational runbooks.' },
@@ -23,6 +23,9 @@
   let historySerial = 0;
   let latticeStartedAt = 0;
   let latticeTimerId = null;
+  let commandIndex = 0;
+  let commandReturnFocus = null;
+  let evidenceReturnFocus = null;
 
   function node(tag, className, text) {
     const el = document.createElement(tag);
@@ -60,6 +63,8 @@
     return labels[mode] || 'Answer mode unavailable';
   }
   function updateModes(session) {
+    state.sourceModes = session.source_modes || {};
+    renderConnections();
     const sourceMode = session.source_mode;
     const simulated = ['simulated', 'simulation', 'seeded', 'fixture', 'fixtures', 'demo'].includes(sourceMode);
     const sourceText = simulated ? 'Simulated Company A data' : sourceMode === 'live' ? 'Live source data' : sourceMode === 'mixed' ? 'Live and simulated sources' : 'Source mode unavailable';
@@ -83,6 +88,7 @@
     $('ask-button').disabled = working;
     $('ask-label').textContent = working ? 'Searching…' : 'Ask Brain';
     $('question-form').setAttribute('aria-busy', String(working));
+    $('answer-followup').disabled = working;
     document.querySelectorAll('.suggestion-card').forEach(button => { button.disabled = working; });
     if (latticeTimerId !== null) window.clearInterval(latticeTimerId);
     latticeTimerId = null;
@@ -151,6 +157,9 @@
     $('evidence-content').replaceChildren();
     if ($('evidence-dialog').open) $('evidence-dialog').close();
     $('copy-label').textContent = 'Copy';
+    $('source-count').hidden = true;
+    const formSection = document.querySelector('.question-section');
+    $('suggestions').before(formSection);
     document.querySelector('.content').classList.remove('has-answer');
     $('suggestions').hidden = false;
   }
@@ -162,13 +171,17 @@
     $('account-button').replaceChildren(document.createTextNode(user ? 'Switch account' : 'Sign in'), node('span', '', '↗'));
     $('mobile-account').textContent = user ? user.name.split(' ')[0] + ' · Account' : 'Sign in';
     $('history-button').hidden = !user;
+    $('recent-section').hidden = !user;
+    updateSuggestions();
     $('logout-button').hidden = !user; $('dialog-logout').hidden = !user;
     const canAdmin = user && Array.isArray(user.rights) && user.rights.some(right => ['admin', 'audit', 'audit_meta'].includes(right));
     $('console-link').hidden = !canAdmin; $('mobile-console-link').hidden = !canAdmin;
   }
   function clearSession() {
     state.epoch++; state.askSerial++; state.evidenceSerial++;
-    closeHistory();
+    closeHistory(); closeCommands();
+    state.recentSerial++; state.sourceModes = {};
+    $('recent-questions').replaceChildren(); renderConnections();
     state.controllers.forEach(controller => controller.abort()); state.controllers.clear();
     state.askController = null; state.evidenceController = null; state.loginController = null;
     state.token = null; state.user = null; state.pendingQuestion = '';
@@ -216,6 +229,7 @@
       }
       if (!isCurrent(epoch)) return;
       $('password').value = ''; $('login-dialog').close();
+      refreshRecent();
       announce(`Signed in as ${state.user.name}.`);
       if (pending) { $('question').value = pending; updateCount(); }
       $('question').focus();
@@ -273,6 +287,7 @@
       const result = await api('/api/ask', { method: 'POST', body: { question }, controller });
       if (!isCurrent(epoch) || serial !== state.askSerial) return;
       renderAnswer(result, question);
+      refreshRecent();
       announce(result.status === 'answered' ? 'Your answer is ready. Source evidence follows the answer.' : 'Your question has been processed.');
     } catch (error) {
       if (!isCurrent(epoch) || serial !== state.askSerial || error.name === 'AbortError') return;
@@ -288,6 +303,8 @@
       if (citationMap.has(match[1])) {
         const button = node('button', 'inline-citation', match[1]); button.type = 'button';
         button.setAttribute('aria-label', `Inspect source ${match[1]}`);
+        button.dataset.sourceRef = match[1];
+        connectCitation(button, match[1]);
         button.addEventListener('click', () => openEvidence(match[1])); parent.append(button);
       } else parent.append(document.createTextNode(match[0]));
       start = match.index + match[0].length;
@@ -312,14 +329,21 @@
     for (const citation of citations) {
       const card = node('button', 'source-card'); card.type = 'button';
       card.setAttribute('aria-label', `Inspect ${citation.ref}: ${citation.title}`);
+      card.dataset.sourceRef = citation.ref; connectCitation(card, citation.ref);
       const info = node('span', 'source-info');
       const updated = dateLabel(citation.updated_iso);
       info.append(node('span', 'source-title', citation.title), node('span', 'source-subtitle',
         [platformInfo(citation.platform).label, citation.container, updated ? `Updated ${updated}` : ''].filter(Boolean).join(' · ')));
+      const status = jiraStatus(citation.status);
+      if (citation.platform === 'jira' && status) info.append(node('span', 'source-status', status));
       card.append(platformIcon(citation.platform), info, node('span', 'source-ref', citation.ref), node('span', 'source-arrow', '→'));
       card.addEventListener('click', () => openEvidence(citation.ref)); $('source-list').append(card);
     }
     $('sources-section').hidden = citations.length === 0;
+    $('source-count').hidden = citations.length === 0;
+    $('source-count').textContent = `${citations.length} source${citations.length === 1 ? '' : 's'} you can access`;
+    $('answer-followup').hidden = noAnswer;
+    $('answer-section').after(document.querySelector('.question-section'));
     $('query-reference').textContent = result.query_id ? `Query ${String(result.query_id).slice(0, 8)}` : '';
     $('answer-section').hidden = false; $('suggestions').hidden = true;
     document.querySelector('.content').classList.add('has-answer');
@@ -332,17 +356,25 @@
     const content = $('evidence-content'); content.replaceChildren();
     const title = node('h2', '', 'Loading source…'); title.id = 'evidence-title';
     content.append(title, node('p', 'evidence-empty', 'Checking current access and loading the supporting passages.'));
-    if (!$('evidence-dialog').open) $('evidence-dialog').showModal();
+    if (!$('evidence-dialog').open) { evidenceReturnFocus = document.activeElement; $('evidence-dialog').showModal(); }
     try {
       const evidence = await api(`/api/evidence/${encodeURIComponent(queryId)}/${encodeURIComponent(ref)}`, { controller });
       if (!isCurrent(epoch) || serial !== state.evidenceSerial || !$('evidence-dialog').open) return;
       content.replaceChildren();
       const platform = node('div', 'evidence-platform'); platform.append(platformIcon(evidence.platform), document.createTextNode(`${platformInfo(evidence.platform).label} · ${ref}`));
       const heading = node('h2', '', evidence.title); heading.id = 'evidence-title';
-      content.append(platform, heading);
+      content.append(platform, heading, node('p', 'evidence-access', 'Access checked just now'));
+      const firstPassage = (evidence.passages || [])[0];
+      const status = jiraStatus(evidence.status) || jiraStatus(firstPassage && String(firstPassage.text || '').match(/\[(In Progress|Blocked|Done|Open)\]/i)?.[1]);
+      if (evidence.platform === 'jira' && status) {
+        content.append(node('p', 'source-status', status));
+        const card = Array.from($('source-list').children).find(item => item.dataset.sourceRef === ref);
+        if (card && !card.querySelector('.source-status')) card.querySelector('.source-info').append(node('span', 'source-status', status));
+      }
       const updated = dateLabel(evidence.updated_iso);
       content.append(node('div', 'evidence-metadata', [updated ? `Updated ${updated}` : '', evidence.version !== undefined ? `Version ${evidence.version}` : ''].filter(Boolean).join(' · ')));
-      const url = httpsUrl(evidence.url);
+      const sourceMode = evidence.source_mode || state.sourceModes[evidence.platform];
+      const url = sourceMode === 'live' ? httpsUrl(evidence.url) : null;
       content.append(node('div', 'section-label passages-label', 'SUPPORTING PASSAGES'));
       const passages = Array.isArray(evidence.passages) ? evidence.passages : [];
       passages.forEach((passage, index) => {
@@ -373,6 +405,10 @@
         const link = node('a', 'evidence-link', `Open in ${platformInfo(evidence.platform).label} ↗`);
         link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; actions.append(link);
       }
+      if (!url) {
+        const note = sourceMode === 'simulated' ? `Demo source: ${platformInfo(evidence.platform).label} is simulated in this proof of concept, so there is no real page, thread or file to open. The passages above are what YieldGPT read.` : 'An external source link is not available. The supporting passages are shown above.';
+        content.append(node('p', 'evidence-empty demo-source-note', note));
+      }
       const returnToAnswer = node('button', 'text-button evidence-return', 'Return to answer'); returnToAnswer.type = 'button';
       returnToAnswer.addEventListener('click', () => { closeEvidence(); $('answer-section').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
       actions.append(returnToAnswer); content.append(actions);
@@ -391,6 +427,8 @@
     state.evidenceController = null;
     if ($('evidence-dialog').open) $('evidence-dialog').close();
     $('evidence-content').replaceChildren();
+    if (evidenceReturnFocus && evidenceReturnFocus.isConnected) evidenceReturnFocus.focus();
+    evidenceReturnFocus = null;
   }
   function closeHistory() {
     historySerial++;
@@ -429,6 +467,7 @@
       const result = await api(`/api/history/${encodeURIComponent(queryId)}/replay`, { method: 'POST', controller });
       if (!isCurrent(epoch) || serial !== state.askSerial) return;
       renderAnswer(result, 'Previous question · checked against your current access');
+      refreshRecent();
       announce('Your previous question has been answered with current evidence.');
     } catch (error) {
       if (isCurrent(epoch) && serial === state.askSerial && error.name !== 'AbortError') requestError(error);
@@ -442,7 +481,7 @@
   async function copyAnswer() {
     if (!state.answer) return;
     const epoch = state.epoch; const answer = state.answer;
-    const sources = answer.citations.map(source => { const url = httpsUrl(source.url); return `[${source.ref}] ${source.title}${url ? ` | ${url}` : ''}`; });
+    const sources = answer.citations.map(source => { const url = (source.source_mode || state.sourceModes[source.platform]) === 'live' ? httpsUrl(source.url) : null; return `[${source.ref}] ${source.title}${url ? ` | ${url}` : ''}`; });
     const text = [answer.answer, sources.length ? `Sources\n${sources.join('\n')}` : ''].filter(Boolean).join('\n\n');
     try {
       await navigator.clipboard.writeText(text);
@@ -451,6 +490,165 @@
       window.setTimeout(() => { if (isCurrent(epoch) && state.answer === answer) $('copy-label').textContent = 'Copy'; }, 2000);
     } catch (_) { if (isCurrent(epoch)) announce('Copy is unavailable in this browser. Select the answer text to copy it.'); }
   }
+  const suggestedQuestions = {
+    ravi: [
+      ['Investigate an incident', 'What caused the payment outage?', 'What was the root cause of the payment outage last quarter, and what follow-up tickets were created?'],
+      ['Find the current runbook', 'What steps should on-call follow?', "What's the latest runbook for the payment-service incident?"],
+      ['Check follow-up work', 'Who owns the certificate renewal fix?', 'Who owns the cert renewal fix?']
+    ],
+    asha: [
+      ['Review security work', 'What vulnerabilities need attention?', 'Show me all security vulnerabilities'],
+      ['Review an incident', 'What happened in the Q3 breach?', 'What happened in the Q3 breach?'],
+      ['Find the reasoning', 'Why was token exchange chosen?', 'What did we decide about the auth service?']
+    ],
+    kim: [
+      ['Get started', 'How do I use the vendor sandbox?', 'How do I set up the payouts sandbox?'],
+      ['Find shared guidance', 'Where is the vendor onboarding guide?', 'Show me the vendor API onboarding guide'],
+      ['Ask about your workspace', 'What can YieldGPT help me with?', 'What can you help me with?']
+    ]
+  };
+  const originalSuggestions = Array.from(document.querySelectorAll('.suggestion-card')).map(button => [
+    button.querySelector('strong').textContent,
+    button.querySelector(':scope > span:not(.card-top):not(.card-tag)').textContent,
+    button.dataset.question
+  ]);
+  function updateSuggestions() {
+    const items = suggestedQuestions[state.user && state.user.username] || originalSuggestions;
+    document.querySelectorAll('.suggestion-card').forEach((button, index) => {
+      button.querySelector('strong').textContent = items[index][0];
+      button.querySelector(':scope > span:not(.card-top):not(.card-tag)').textContent = items[index][1];
+      button.dataset.question = items[index][2];
+      // The prompt changes with the persona; it does not assert access to any source.
+      button.querySelector('.card-tag').textContent = state.user ? 'SUGGESTED QUESTION' : ['PROJECT CONTEXT', 'INCIDENT FOLLOW-UP', 'TEAM DECISIONS'][index];
+    });
+  }
+  function renderConnections() {
+    const list = $('source-connections'); list.replaceChildren();
+    for (const [platform, details] of Object.entries(platforms)) {
+      const mode = state.sourceModes[platform];
+      const item = node('li');
+      item.append(document.createTextNode(details.label), node('span', 'connection-mode', mode === 'live' ? 'Live' : mode === 'simulated' ? 'Demo' : 'Unknown'));
+      list.append(item);
+    }
+  }
+  function jiraStatus(value) {
+    if (typeof value !== 'string') return '';
+    const states = { 'blocked': 'Blocked', 'in progress': 'In Progress', 'done': 'Done', 'open': 'Open' };
+    return states[value.trim().toLowerCase()] || '';
+  }
+  function connectCitation(button, ref) {
+    const highlight = value => {
+      document.querySelectorAll('[data-source-ref]').forEach(element => {
+        if (element.dataset.sourceRef === ref) element.classList.toggle('source-highlight', value);
+      });
+    };
+    button.addEventListener('pointerenter', () => highlight(true));
+    button.addEventListener('pointerleave', () => highlight(false));
+    button.addEventListener('focus', () => highlight(true));
+    button.addEventListener('blur', () => highlight(false));
+  }
+  async function refreshRecent() {
+    if (!state.user) return;
+    const epoch = state.epoch, serial = ++state.recentSerial;
+    const content = $('recent-questions');
+    content.replaceChildren(node('p', 'evidence-empty', 'Loading…'));
+    try {
+      const result = await api('/api/history');
+      if (!isCurrent(epoch) || serial !== state.recentSerial) return;
+      content.replaceChildren();
+      for (const item of (result.items || []).slice(0, 4)) {
+        const when = new Date(typeof item.created_at === 'number' ? item.created_at * 1000 : item.created_at);
+        const label = Number.isNaN(when.getTime()) ? 'Previous question' : when.toLocaleString();
+        const button = node('button', 'recent-question text-button', label); button.type = 'button';
+        button.setAttribute('aria-label', `Revisit question from ${label}`);
+        button.addEventListener('click', () => replayQuestion(item.query_id)); content.append(button);
+      }
+      if (!content.children.length) content.append(node('p', 'evidence-empty', 'No previous questions yet.'));
+    } catch (error) {
+      if (isCurrent(epoch) && serial === state.recentSerial) content.replaceChildren(node('p', 'evidence-empty', 'Use Previous questions to try again.'));
+    }
+  }
+  function focusQuestion() {
+    $('question').focus();
+    $('question').scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+  }
+  function newQuestion() {
+    cancelAsk(); closeEvidence(); closeHistory(); clearAnswer(); clearError('form-error');
+    $('question').value = ''; updateCount(); focusQuestion();
+  }
+  function followUp() {
+    if (!state.answer) return;
+    $('question').value = state.answer.status === 'conversation' ? '' : `Regarding “${state.question.slice(0, 160)}”: `;
+    updateCount(); focusQuestion();
+    $('question').setSelectionRange($('question').value.length, $('question').value.length);
+  }
+  function closeCommands() {
+    if ($('command-dialog').open) $('command-dialog').close();
+    $('command-input').value = ''; $('command-results').replaceChildren();
+    if (commandReturnFocus && commandReturnFocus.isConnected) commandReturnFocus.focus();
+    commandReturnFocus = null;
+  }
+  function markCommand() {
+    const buttons = Array.from($('command-results').children);
+    buttons.forEach((button, index) => {
+      if (index === commandIndex) button.setAttribute('aria-current', 'true');
+      else button.removeAttribute('aria-current');
+    });
+    if (buttons[commandIndex]) buttons[commandIndex].scrollIntoView({ block: 'nearest' });
+  }
+  function renderCommands() {
+    const value = $('command-input').value.trim();
+    const items = [
+      ['New question', newQuestion],
+      ['Previous questions', () => { if (state.user) openHistory(); else openLogin(); }],
+      ['Switch account', openLogin],
+      ...Array.from(document.querySelectorAll('.suggestion-card')).map(button => [button.dataset.question, () => {
+        $('question').value = button.dataset.question; updateCount(); ask();
+      }]),
+      ...personas.map(persona => [`Switch to ${persona.name}`, () => { openLogin(); selectPersona(persona); }])
+    ].filter(([label]) => !value || label.toLowerCase().includes(value.toLowerCase()));
+    if (value && !items.some(([label]) => label.toLowerCase() === value.toLowerCase())) {
+      items.unshift([`Ask: ${value}`, () => { $('question').value = value; updateCount(); ask(); }]);
+    }
+    $('command-results').replaceChildren(); commandIndex = 0;
+    for (const [label, action] of items) {
+      const button = node('button', 'source-card', label); button.type = 'button';
+      button.addEventListener('click', () => { closeCommands(); action(); });
+      $('command-results').append(button);
+    }
+    markCommand();
+  }
+  function openCommands() {
+    if ($('login-dialog').open || $('evidence-dialog').open || $('history-dialog').open) return;
+    commandReturnFocus = document.activeElement;
+    if (!$('command-dialog').open) $('command-dialog').showModal();
+    renderCommands(); $('command-input').focus();
+  }
+  $('command-button').addEventListener('click', openCommands);
+  $('mobile-commands').addEventListener('click', openCommands);
+  $('close-commands').addEventListener('click', closeCommands);
+  $('command-dialog').addEventListener('cancel', event => { event.preventDefault(); closeCommands(); });
+  $('command-input').addEventListener('input', renderCommands);
+  $('command-dialog').addEventListener('keydown', event => {
+    const buttons = Array.from($('command-results').children);
+    if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && buttons.length) {
+      event.preventDefault();
+      commandIndex = (commandIndex + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+      markCommand();
+    } else if (event.key === 'Enter' && event.target === $('command-input') && buttons[commandIndex]) {
+      event.preventDefault(); buttons[commandIndex].click();
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      if ($('command-dialog').open) closeCommands(); else openCommands();
+    }
+  });
+  $('sidebar-history').addEventListener('click', openHistory);
+  $('mobile-new-question').addEventListener('click', newQuestion);
+  $('answer-followup').addEventListener('click', followUp);
+  renderConnections();
   $('question-form').addEventListener('submit', event => { event.preventDefault(); ask(); });
   $('question').addEventListener('input', updateCount);
   $('question').addEventListener('keydown', event => {
@@ -460,7 +658,7 @@
     $('question').value = button.dataset.question; updateCount(); $('question').focus(); ask();
   }));
   $('cancel-request').addEventListener('click', cancelAsk);
-  $('new-question').addEventListener('click', () => { cancelAsk(); closeEvidence(); clearAnswer(); clearError('form-error'); $('question').value = ''; updateCount(); $('question').focus(); });
+  $('new-question').addEventListener('click', newQuestion);
   $('account-button').addEventListener('click', openLogin); $('mobile-account').addEventListener('click', openLogin);
   $('logout-button').addEventListener('click', logout); $('dialog-logout').addEventListener('click', logout);
   $('demo-login-form').addEventListener('submit', event => { event.preventDefault(); login(selectedPersona, 'demo'); });
@@ -479,4 +677,5 @@
   // A restored browser page must not resurrect a prior identity or its answer.
   window.addEventListener('pageshow', event => { if (event.persisted) clearSession(); });
 })();
+
 
