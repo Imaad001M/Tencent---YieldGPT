@@ -47,3 +47,11 @@ def test_brain_puts_a_checked_summary_on_top_and_keeps_the_extracts(brain, monke
 def test_brain_without_summary_is_unchanged(brain):
     r = brain.ask(USERS["ravi"], "What was the root cause of the payment outage last quarter, and what follow-up tickets were created?")
     assert r["answer"].startswith("Here's what I found in ") and r["quality"]["mode"] == "extractive"
+
+
+def test_reasoning_effort_is_sent_only_when_configured(monkeypatch):
+    from app import llm
+    monkeypatch.setattr(llm, "LLM_REASONING_EFFORT", "")
+    assert "reasoning_effort" not in llm.request_body({"model": "m"})
+    monkeypatch.setattr(llm, "LLM_REASONING_EFFORT", "none")
+    assert llm.request_body({"model": "m"})["reasoning_effort"] == "none"

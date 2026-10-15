@@ -38,6 +38,8 @@ LLM_PROVIDER = os.getenv("IB_LLM_PROVIDER", "stub")  # "stub" | "openai_compatib
 LLM_BASE_URL = os.getenv("IB_LLM_BASE_URL", "")
 LLM_API_KEY = os.getenv("IB_LLM_API_KEY", "")
 LLM_MODEL = os.getenv("IB_LLM_MODEL", "")
+# Optional: sent as reasoning_effort ("none" stops thinking models spending the token budget). Blank = not sent.
+LLM_REASONING_EFFORT = os.getenv("IB_LLM_REASONING_EFFORT", "")
 
 PER_PLATFORM_K = int(os.getenv("IB_PER_PLATFORM_K", "4"))
 CONTEXT_BUDGET_CHARS = int(os.getenv("IB_CONTEXT_BUDGET", "7000"))

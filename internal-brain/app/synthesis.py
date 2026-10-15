@@ -77,17 +77,17 @@ def summarize(question: str, sources) -> tuple[str | None, dict]:
     try:
         timeout = min(max(float(os.getenv("IB_LLM_TIMEOUT_S", "20")), 1), 60)
         with httpx.Client(timeout=timeout, follow_redirects=False) as client:
-            for attempt in range(2):
+            for attempt in range(llm.RETRIES + 1):
                 m["remote_attempts"] += 1
                 r = client.post(llm.LLM_BASE_URL.rstrip("/") + "/chat/completions",
                                 headers={"Authorization": "Bearer " + llm.LLM_API_KEY},
-                                json={"model": llm.LLM_MODEL, "temperature": 0, "max_tokens": 400,
+                                json=llm.request_body({"model": llm.LLM_MODEL, "temperature": 0, "max_tokens": 400,
                                       "messages": [{"role": "system", "content": SYSTEM},
                                                    {"role": "user", "content": json.dumps(
                                                        {"question": question, "sources": _source_block(sources)},
-                                                       ensure_ascii=False)}]})
-                if r.status_code in (429, 500, 502, 503, 504) and attempt == 0:
-                    time.sleep(1.0)
+                                                       ensure_ascii=False)}]}))
+                if r.status_code in (429, 500, 502, 503, 504) and attempt < llm.RETRIES:
+                    time.sleep(llm.BACKOFF_S[attempt])
                     continue
                 r.raise_for_status()
                 break

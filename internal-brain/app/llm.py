@@ -14,7 +14,7 @@ from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
 
 import httpx
-from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_PROVIDER
+from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_PROVIDER, LLM_REASONING_EFFORT
 from .evidence import model_source, passage_score, passages
 
 
@@ -34,6 +34,15 @@ facts, include evidence for each supported fact and relevant follow-up work.
 Return ONLY JSON: {"selections":[{"source":"S1","passage":"p-example"}]}.
 Select at most 16 passages. Do not invent identifiers. Return an empty selections
 array if the evidence does not answer the question. Do not add prose or other fields.'''
+
+
+# Hosted free tiers return 429/503 under load; retry with growing waits before falling back.
+RETRIES, BACKOFF_S = 2, (1.0, 3.0)
+
+
+def request_body(body: dict) -> dict:
+    """Adds optional provider settings, e.g. reasoning_effort=none so a thinking model answers directly."""
+    return {**body, 'reasoning_effort': LLM_REASONING_EFFORT} if LLM_REASONING_EFFORT else body
 
 
 def build_messages(question, sources, asker=''):
@@ -174,23 +183,23 @@ def complete(question: str, sources: list[dict], asker: str) -> str:
             raise ValueError('invalid timeout')
         timeout = min(max(timeout,1),60)
         with httpx.Client(timeout=timeout,follow_redirects=False) as client:
-            for attempt in range(2):
+            for attempt in range(RETRIES + 1):
                 measurement['remote_attempts'] += 1
                 started = time.perf_counter()
                 status = None
                 try:
                     r = client.post(LLM_BASE_URL.rstrip('/')+'/chat/completions',
                         headers={'Authorization':'Bearer '+LLM_API_KEY},
-                        json={'model':LLM_MODEL,'temperature':0,'max_tokens':1600,
-                              'messages':build_messages(question,sources,asker)})
+                        json=request_body({'model':LLM_MODEL,'temperature':0,'max_tokens':1600,
+                              'messages':build_messages(question,sources,asker)}))
                     status = r.status_code
                 finally:
                     elapsed = (time.perf_counter()-started)*1000
                     measurement['provider_http_ms'] += elapsed
                     measurement['attempts'].append({'http_status':status,'elapsed_ms':round(elapsed,3)})
-                if r.status_code in (429,500,502,503,504) and attempt == 0:
+                if r.status_code in (429,500,502,503,504) and attempt < RETRIES:
                     # Usage for unsuccessful requests is unknown; never call the retry free.
-                    time.sleep(.2)
+                    time.sleep(BACKOFF_S[attempt])
                     continue
                 r.raise_for_status()
                 payload = r.json()
