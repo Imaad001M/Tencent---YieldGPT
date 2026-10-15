@@ -21,7 +21,7 @@ import anyio
 from . import audit, audit_policy, identity, llm
 from .brain import Brain
 from .evidence import EvidenceUnavailable
-from .config import DATA_DIR, DEMO_MODE, POLL_INTERVAL_S, WEBHOOK_SECRET, WEBHOOK_SECRETS
+from .config import ATLASSIAN_MODE, DATA_DIR, DEMO_MODE, POLL_INTERVAL_S, WEBHOOK_SECRET, WEBHOOK_SECRETS
 from .identity import User
 from .sync_state import SqliteSyncStateStore
 from .slack_runtime import create_live_slack_from_env
@@ -51,8 +51,13 @@ async def lifespan(_app):
     service = Brain(world, sync_store=SqliteSyncStateStore(DATA_DIR / "sync_state.db"), connectors=connectors)
     worker = SlackMaintenance(service.syncer, live[0], poll_interval_s=POLL_INTERVAL_S,
                               reconcile_interval_s=900, event_sink=audit.log) if live else None
-    state.update(brain=service, slack_receiver=live[1] if live else None, slack_worker=worker,
-                 demo_mode=DEMO_MODE and not bool(live), source_mode='mixed' if live or drive else 'simulated')
+    source_modes = {'confluence': 'live' if ATLASSIAN_MODE == 'live' else 'simulated',
+                    'jira': 'live' if ATLASSIAN_MODE == 'live' else 'simulated',
+                    'slack': 'live' if live else 'simulated',
+                    'gdrive': 'live' if drive else 'simulated'}
+    live_count = sum(mode == 'live' for mode in source_modes.values())
+    state.update(source_modes=source_modes, brain=service, slack_receiver=live[1] if live else None, slack_worker=worker,
+                 demo_mode=DEMO_MODE and not bool(live), source_mode='live' if live_count == 4 else 'mixed' if live_count else 'simulated')
     try:
         audit.log("system", "startup", indexed_docs=len(service.index), source_mode=state['source_mode'])
         if SERVERLESS:
@@ -165,7 +170,8 @@ def session(user: User = Depends(current_user)):
     return {'user': {'username': user.username, 'name': user.name, 'title': user.title,
                      'rights': sorted(user.app_roles)}, 'demo_mode': state.get('demo_mode', DEMO_MODE),
             'generation_mode': 'extractive' if llm.LLM_PROVIDER in ('stub', 'extractive') else 'model_selected',
-            'source_mode': state.get('source_mode', 'simulated')}
+            'source_mode': state.get('source_mode', 'simulated'),
+            'source_modes': dict(state.get('source_modes', {}))}
 
 
 @app.post("/api/login")
@@ -185,7 +191,8 @@ def login(body: LoginIn):
 @app.post("/api/ask")
 def ask(body: AskIn, user: User = Depends(require("ask"))):
     try:
-        return brain().ask(user, body.question)
+        result = brain().ask(user, body.question)
+        return {**result, 'citations': [_source_presentation(c) for c in result.get('citations', [])]}
     except ValueError:
         raise HTTPException(422, 'Enter a question of up to 2000 characters.') from None
     except Exception:
@@ -193,10 +200,16 @@ def ask(body: AskIn, user: User = Depends(require("ask"))):
         raise HTTPException(503, 'The answer could not be completed. Please try again.') from None
 
 
+def _source_presentation(source):
+    """Presentation metadata only; authorization stays in Brain.evidence."""
+    mode = state.get('source_modes', {}).get(source.get('platform'), 'unknown')
+    return {**source, 'source_mode': mode, 'url': source.get('url') if mode == 'live' else None}
+
+
 @app.get('/api/evidence/{query_id}/{ref}')
 def evidence(query_id: str, ref: str, user: User = Depends(require('ask'))):
     try:
-        return brain().evidence(user, query_id, ref)
+        return _source_presentation(brain().evidence(user, query_id, ref))
     except EvidenceUnavailable:
         raise HTTPException(404, 'Evidence is not available. Ask the question again.') from None
     except Exception:
@@ -343,3 +356,4 @@ def simulate(body: SimIn, user: User = Depends(require("admin"))):
     audit.log(user.username, "simulated_platform_change", action=body.action, target=body.target,
               value=body.value, webhook_delivered=body.push)
     return {"ok": True}
+

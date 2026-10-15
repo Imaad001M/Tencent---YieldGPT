@@ -31,3 +31,43 @@ jobs:
       - run: python -m pytest -q
         env:
           IB_ATLASSIAN_MODE: ${{ matrix.atlassian_mode }}
+
+
+  employee-ui:
+    name: Employee interface browser checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: internal-brain
+    env:
+      IB_DEMO_MODE: '1'
+      IB_SERVERLESS: '1'
+      IB_LLM_PROVIDER: stub
+      IB_ATLASSIAN_MODE: fixture
+      IB_DATA_DIR: /tmp/yieldgpt-ui-checks
+      IB_ENV_FILE: /tmp/yieldgpt-ui-checks/no-env
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: internal-brain/requirements-lock.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements-lock.txt
+      - run: npm install --prefix tests/browser --no-save playwright
+      - run: npx --prefix tests/browser playwright install --with-deps chromium
+      - name: Check employee workflows against the demo server
+        run: |
+          python -m uvicorn app.server:app --host 127.0.0.1 --port 8000 > /tmp/yieldgpt-ui-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; cat /tmp/yieldgpt-ui-server.log' EXIT
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/ > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8000/ > /dev/null
+          node tests/browser/employee-ui.mjs
