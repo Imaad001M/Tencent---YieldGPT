@@ -270,7 +270,7 @@ em.a { font-style: normal; color: var(--amber); }
       <li class="rv" style="--i:5">Injected instructions in a question are blocked; poisoned passages are quarantined.</li>
     </ul>
   </div>
-  <div class="foot">In this submission answers are extractive: assembled on the server from authorized passages, word for word, each line cited. The model adapter is optional.</div>
+  <div class="foot">Proof of concept model: Google Gemini (free tier) through the OpenAI-compatible API that Tencent Hunyuan also offers. Every sentence it writes is checked against its sources; the exact cited passages always follow.</div>
 </section>
 
 <!-- 7 -->
@@ -326,7 +326,7 @@ em.a { font-style: normal; color: var(--amber); }
     <div class="cell rv" style="--i:4"><h3>Grounding cases</h3><div class="from">15/28</div><div class="to">28/28</div></div>
     <div class="cell rv" style="--i:5"><h3>False accepts</h3><div class="from">13</div><div class="to">0</div></div>
   </div>
-  <p class="lede rv" style="--i:6">Neither pipeline exposed an unauthorized citation. 440+ automated tests run on every pull request in CI, in two connector modes.</p>
+  <p class="lede rv" style="--i:6">With a real model in the loop (live run, 15 Oct): 71/78 cases, 0 unauthorized citations, 10/10 attacks resisted. 460+ automated tests run on every pull request.</p>
   <div class="foot">Fixture data · offline comparison on identical cases · human scoring of the 160-question bank is still in progress</div>
 </section>
 
@@ -336,7 +336,7 @@ em.a { font-style: normal; color: var(--amber); }
   <h2 class="rv" style="--i:1">YieldGPT inside the tools Tencent teams already use</h2>
   <div class="cards3">
     <div class="tcard rv" style="--i:2"><span class="pill ok">WORKING</span><h3>CodeBuddy and WorkBuddy</h3><p>An MCP connector lets the CodeBuddy agent call YieldGPT and open citations. Identity comes from config, so every check still applies.</p></div>
-    <div class="tcard rv" style="--i:3"><span class="pill ok">ADAPTER READY</span><h3>Tencent Hunyuan</h3><p>The adapter speaks the OpenAI-compatible API Hunyuan offers and is tested end to end. This submission answers in extractive mode; switching Hunyuan on is configuration.</p></div>
+    <div class="tcard rv" style="--i:3"><span class="pill ok">DROP-IN READY</span><h3>Tencent Hunyuan</h3><p>Our model layer speaks the OpenAI-compatible API that Hunyuan offers. The proof of concept runs on free Gemini; moving to Hunyuan is a change of URL, model name and key, no code.</p></div>
     <div class="tcard rv" style="--i:4"><span class="pill wait">IN PROGRESS</span><h3>Tencent Cloud</h3><p>Docker deployment with secrets from the environment only, and a public demo URL. Tencent COS is a natural second checkpoint anchor.</p></div>
   </div>
 </section>
@@ -350,9 +350,10 @@ em.a { font-style: normal; color: var(--amber); }
       <li>Confluence and Jira on a real Atlassian site<small>84/84 decisions · 14/14 scenarios · 21/21 lifecycle</small></li>
       <li>Write-once checkpoints on two stores<small>S3 Object Lock, compliance mode</small></li>
       <li>YieldGPT inside CodeBuddy</li>
+      <li>Real model answers, every sentence checked<small>Gemini free tier · 71/78 · 0 unauthorized citations</small></li>
       <li>Full test suite in CI on every pull request</li></ul></div>
     <div class="pend rv" style="--i:3"><h3>Pending</h3><ul>
-      <li>Hunyuan switched on and evaluated<small>answers are extractive by design in this submission</small></li>
+      <li>Hunyuan benchmarked on our evaluation<small>proof of concept runs on free Gemini (71/78, 0 leaks)</small></li>
       <li>Live Slack workspaces and live Google Drive</li>
       <li>Public URL on Tencent Cloud</li>
       <li>Two-reviewer human scoring</li></ul></div>
