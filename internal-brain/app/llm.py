@@ -32,12 +32,32 @@ and passage identifiers. Select complete passages that directly answer the quest
 preserving uncertainty and contradictory evidence. For questions requesting several
 facts, include evidence for each supported fact and relevant follow-up work.
 Return ONLY JSON: {"selections":[{"source":"S1","passage":"p-example"}]}.
-Select at most 16 passages. Do not invent identifiers. Return an empty selections
-array if the evidence does not answer the question. Do not add prose or other fields.'''
+Select at most 16 passages. Do not invent identifiers. The sources were retrieved for this
+question and the user may open all of them: select every passage that helps answer it. Return an
+empty selections array only if none of the sources is relevant. Do not add prose or other fields.'''
 
 
 # Hosted free tiers return 429/503 under load; retry with growing waits before falling back.
-RETRIES, BACKOFF_S = 2, (1.0, 3.0)
+RETRIES, BACKOFF_S, RATE_LIMIT_BACKOFF_S = 2, (1.0, 3.0), (8.0, 20.0)
+_pace_lock = __import__('threading').Lock()
+_last_call = [0.0]
+
+
+def pace():
+    """Optional minimum gap between model calls (IB_LLM_MIN_INTERVAL_S) for bulk runs on free tiers."""
+    gap = float(os.getenv('IB_LLM_MIN_INTERVAL_S', '0') or 0)
+    if gap <= 0:
+        return
+    with _pace_lock:
+        wait = _last_call[0] + gap - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _last_call[0] = time.monotonic()
+
+
+def backoff(status: int, attempt: int) -> float:
+    """Per-minute rate limits (429) need a longer wait than a transient 5xx."""
+    return (RATE_LIMIT_BACKOFF_S if status == 429 else BACKOFF_S)[attempt]
 
 
 def request_body(body: dict) -> dict:
@@ -185,6 +205,7 @@ def complete(question: str, sources: list[dict], asker: str) -> str:
         with httpx.Client(timeout=timeout,follow_redirects=False) as client:
             for attempt in range(RETRIES + 1):
                 measurement['remote_attempts'] += 1
+                pace()
                 started = time.perf_counter()
                 status = None
                 try:
@@ -199,7 +220,7 @@ def complete(question: str, sources: list[dict], asker: str) -> str:
                     measurement['attempts'].append({'http_status':status,'elapsed_ms':round(elapsed,3)})
                 if r.status_code in (429,500,502,503,504) and attempt < RETRIES:
                     # Usage for unsuccessful requests is unknown; never call the retry free.
-                    time.sleep(BACKOFF_S[attempt])
+                    time.sleep(backoff(r.status_code, attempt))
                     continue
                 r.raise_for_status()
                 payload = r.json()
@@ -218,6 +239,11 @@ def complete(question: str, sources: list[dict], asker: str) -> str:
         selected=value['selections']
         if not isinstance(selected,list) or len(selected)>16:
             raise ValueError('invalid selections')
+        if not selected:
+            # Authorized, relevant sources were retrieved but the model chose none: show the exact
+            # extracts rather than a false 'no answer' (in strict live mode this stays a failure).
+            finish()
+            return fallback('model_selected_nothing')
         result = _render(selected,sources)
         finish()
         measurement['mode']='model_selected'

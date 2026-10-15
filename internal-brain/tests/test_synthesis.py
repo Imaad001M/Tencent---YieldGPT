@@ -55,3 +55,38 @@ def test_reasoning_effort_is_sent_only_when_configured(monkeypatch):
     assert "reasoning_effort" not in llm.request_body({"model": "m"})
     monkeypatch.setattr(llm, "LLM_REASONING_EFFORT", "none")
     assert llm.request_body({"model": "m"})["reasoning_effort"] == "none"
+
+
+def _fake_model(monkeypatch, respond):
+    import httpx
+    from app import llm
+    monkeypatch.setattr(llm, "LLM_PROVIDER", "openai_compatible")
+    monkeypatch.setattr(llm, "LLM_BASE_URL", "https://model.example/v1")
+    monkeypatch.setattr(llm, "LLM_MODEL", "test")
+    monkeypatch.setattr(llm, "LLM_API_KEY", "fake")
+    real = httpx.Client
+    monkeypatch.setattr(llm.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(respond), **kw))
+    return llm
+
+
+def test_model_choosing_nothing_falls_back_to_extracts(monkeypatch):
+    import httpx, json as _json
+    llm = _fake_model(monkeypatch, lambda req: httpx.Response(200, json={"choices": [{"message": {"content": _json.dumps({"selections": []})}}]}))
+    monkeypatch.setenv("IB_LLM_REQUIRE_LIVE", "0")
+    r = llm.complete("Status?", [{"ref": "S1", "text": "Ready for cutover."}], "Jane")
+    assert r.mode == "extractive_fallback" and r.reason == "model_selected_nothing" and "Ready for cutover." in r
+    monkeypatch.setenv("IB_LLM_REQUIRE_LIVE", "1")                 # strict live runs still fail visibly
+    import pytest
+    with pytest.raises(llm.ModelUnavailable):
+        llm.complete("Status?", [{"ref": "S1", "text": "Ready for cutover."}], "Jane")
+
+
+def test_rate_limit_waits_longer_than_a_server_error(monkeypatch):
+    from app import llm
+    assert llm.backoff(429, 0) > llm.backoff(503, 0) and llm.backoff(429, 1) > llm.backoff(503, 1)
+    slept = []
+    monkeypatch.setattr(llm.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setenv("IB_LLM_MIN_INTERVAL_S", "2")
+    llm._last_call[0] = llm.time.monotonic()
+    llm.pace()
+    assert slept and 0 < slept[0] <= 2

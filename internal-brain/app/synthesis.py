@@ -79,6 +79,7 @@ def summarize(question: str, sources) -> tuple[str | None, dict]:
         with httpx.Client(timeout=timeout, follow_redirects=False) as client:
             for attempt in range(llm.RETRIES + 1):
                 m["remote_attempts"] += 1
+                llm.pace()
                 r = client.post(llm.LLM_BASE_URL.rstrip("/") + "/chat/completions",
                                 headers={"Authorization": "Bearer " + llm.LLM_API_KEY},
                                 json=llm.request_body({"model": llm.LLM_MODEL, "temperature": 0, "max_tokens": 400,
@@ -87,7 +88,7 @@ def summarize(question: str, sources) -> tuple[str | None, dict]:
                                                        {"question": question, "sources": _source_block(sources)},
                                                        ensure_ascii=False)}]}))
                 if r.status_code in (429, 500, 502, 503, 504) and attempt < llm.RETRIES:
-                    time.sleep(llm.BACKOFF_S[attempt])
+                    time.sleep(llm.backoff(r.status_code, attempt))
                     continue
                 r.raise_for_status()
                 break
