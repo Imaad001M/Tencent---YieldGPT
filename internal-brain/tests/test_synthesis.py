@@ -90,3 +90,14 @@ def test_rate_limit_waits_longer_than_a_server_error(monkeypatch):
     llm._last_call[0] = llm.time.monotonic()
     llm.pace()
     assert slept and 0 < slept[0] <= 2
+
+
+def test_completion_claim_citing_an_open_ticket_is_dropped():
+    src = [{"ref": "S5", "platform": "jira", "title": "PAY-2", "passages": [
+                {"text": "PAY-2 [In Progress] Alert when any certificate expires within 14 days."}, {"text": "Add expiry alerting."}]},
+           {"ref": "S6", "platform": "jira", "title": "PAY-3", "passages": [
+                {"text": "PAY-3 [Done] Make cert renewal job fail loudly."}, {"text": "Renewal job now pages on failure."}]}]
+    seen_live = "To address this, we implemented expiry alerts for certificates within 14 days and updated the renewal job to page on failure [S5][S6]."
+    assert synthesis.check(seen_live, src)[0] == ""
+    ok = "The renewal job now pages on failure [S6]. Expiry alerting is in progress [S5]."
+    assert synthesis.check(ok, src)[0] == ok
