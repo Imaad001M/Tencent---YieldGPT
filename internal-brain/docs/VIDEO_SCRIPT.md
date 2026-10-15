@@ -145,11 +145,17 @@ App as **Priya Nair**, open **/compliance**, type:
 > per-document decision, and the answer. Ravi was allowed the first time and denied after the
 > restriction.
 
-## 5:35 to 6:10 · Slides 8, 9, 10 (proof) · M
+## 5:35 to 5:50 · Slide 8 (proof, live) · M
 
 > On a real Atlassian Cloud site: 84 of 84 permission decisions matched Atlassian, 14 of 14 brief
-> scenarios passed, 21 of 21 lifecycle steps including an inherited page restriction.
-> Under load, 25 users for five minutes: 19,223 answers, zero leaks, zero audit gaps.
+> scenarios passed, and 21 of 21 lifecycle steps, including an inherited page restriction.
+
+## 5:50 to 6:00 · Slide 9 (proof, under load) · P
+
+> Under load, 25 users for five minutes: 19,223 answers, zero permission leaks, zero audit gaps.
+
+## 6:00 to 6:10 · Slide 10 (proof, answer quality) · I
+
 > And with a real model in the loop: 71 of 78 evaluation cases, zero unauthorized citations, ten of
 > ten attacks resisted. Every number has a date and a label: live, fixture or synthetic.
 
