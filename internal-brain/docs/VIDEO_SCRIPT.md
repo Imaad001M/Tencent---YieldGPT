@@ -1,4 +1,4 @@
-# YieldGPT demo video script (target 7:30, limit 5 to 8 min)
+# YieldGPT demo video script (target 5:30; the handbook requires 5 to 8 min)
 
 Plays along with the deck (`docs/deck/index.html`, press F for fullscreen, arrow keys to advance)
 with three live app segments in between. Voices: **M** = Mohnish, **I** = Imaad, **P** = Punya.
@@ -52,146 +52,83 @@ unauthorized citations across every run.
 
 ---
 
-## 0:00 to 0:30 · Slide 1 (title) · M
+## 0:00 to 0:40 · Slides 1 and 2 (title, the problem) · M
 
-> We're YieldGPT, for Aspire's Internal Brain case study. One question across Confluence, Jira,
-> Slack and Google Drive, answered only from what you're allowed to see, and every answer on the
-> record. I built the permissions and connectors, Imaad the retrieval, answers and UI, and Punya the
-> audit trail and deployment. We built it with Tencent's CodeBuddy and WorkBuddy.
+> We're YieldGPT, for Aspire's Internal Brain case study, built with Tencent's CodeBuddy and
+> WorkBuddy. Company knowledge lives in Confluence, Jira, Slack and Drive, each with its own
+> permission rules. Copy it all into one AI index and the assistant can leak what people were never
+> allowed to open, and nobody can prove who saw what.
 
-## 0:30 to 1:00 · Slide 2 (the problem) · M
+## 0:40 to 1:15 · Slides 3 and 4 (what it does, six checks animation) · I
 
-> Company knowledge lives on four platforms, each with its own permission rules: space and page
-> restrictions in Confluence, issue security in Jira, private channels in Slack, folder sharing in
-> Drive. Copy it all into one AI index and the assistant can show people what they were never
-> allowed to open, and nobody can prove afterwards who saw what.
+> YieldGPT never copies permissions. You ask once, and each platform decides, live, as you. Every
+> source passes six checks, from before we read it to when you open a citation. Anything denied
+> drops out, gets recorded, and looks exactly like something that never existed.
 
-## 1:00 to 1:25 · Slide 3 (what it does) · I
+## 1:15 to 2:05 · LIVE DEMO A: one question, four platforms · I
 
-> So YieldGPT never copies permissions. You ask once; each platform decides, live, as you; and
-> everything goes on the record. On our real Jira site, PAY-4 sits behind a security level: Ravi
-> can browse the project and is still denied, Asha gets it. Jira made that call, not us.
+App as **Jane Doe**. Ask: **"What's blocking the database migration?"**
 
-## 1:25 to 1:50 · Slide 4 (six checks, let the animation run) · I
+> Plain English, one question. The AI answer comes first, every sentence checked against its
+> sources, here our real Jira ticket MIG-2 and the team's Slack thread. (Name what's on screen.)
 
-> Every candidate passes six checks: a prefilter that can only remove, a live check before reading,
-> again after reading, again before release, and once more when you open a citation. Anything denied
-> drops out, is recorded, and looks exactly like something that never existed.
+Sign in as **Kim Lee**. Ask: **"Show me the security incident report from the Q3 breach"**.
 
-## 1:50 to 2:55 · LIVE DEMO A: one question, four platforms · I
+> Kim's a contractor. She gets a neutral answer: no title, no hint the report exists.
 
-App. Sign in as **Jane Doe**. Ask: **"What's blocking the database migration?"**
+## 2:05 to 2:45 · Slides 5 and 6 (architecture, the model) · P
 
-> Jane's a backend engineer. Plain English, one question. The AI answer comes first, and every
-> sentence is checked against the sources it cites. Below are the sources it used, here the
-> blocked ticket MIG-2 from our real Jira and the engineers' Slack thread. (Name what's on screen.)
+> The platforms decide access, our server runs every check, and the model is untrusted: it only
+> sees passages that already passed, and any sentence the sources don't support is dropped.
+> For this proof of concept we used Google's free Gemini API, which is widely used and standard for
+> prototyping. It goes through the same OpenAI-compatible interface Tencent Hunyuan offers, so
+> switching to Hunyuan is just a URL, model name and key.
 
-Click the **MIG-2** source: passages, version, Open in Jira.
-
-> Opening a citation re-checks access. The private leads channel Jane isn't in never appears.
-
-Sign in as **Kim Lee** (contractor). Ask **"Show me the security incident report from the Q3 breach"**,
-then **"Show me the unicorn migration to mars report"**.
-
-> Kim has no Atlassian account. Same neutral answer for a report that exists and one that doesn't.
-> No title, no hint.
-
-## 2:55 to 3:20 · Slide 5 (architecture) · P
-
-> Four trust boundaries. The platforms are the source of truth for access. Our server runs every
-> check and writes the audit. The language model is untrusted. And the write-once checkpoint stores
-> can't be rewritten, even by us.
-
-## 3:20 to 3:55 · Slide 6 (the model) · P
-
-> The model only ever sees passages that already passed the checks. It holds no credentials and
-> calls no tools, and any sentence it writes that the sources don't support is dropped.
->
-> For this proof of concept we used Google's Gemini API on its free tier. It's widely used, free to
-> start with, and standard practice for prototyping. Our model layer speaks the OpenAI-compatible
-> API that Tencent Hunyuan also offers, so moving to Hunyuan is a configuration change: the URL, the
-> model name and the key. The prompts, checks and permissions stay exactly the same.
-
-## 3:55 to 4:55 · LIVE DEMO B: revoke access on the real Confluence site · M
+## 2:45 to 3:30 · LIVE DEMO B: revoke access on the real Confluence site · M
 
 App as **Ravi Menon**. Ask: **"What's the latest runbook for the payment-service incident?"**
 
-> Ravi's on call for payments. The runbook comes from our live Confluence.
+> Ravi gets the runbook from our live Confluence.
 
-Confluence tab, on the runbook page: **•••** > **Restrictions** > "Only specific people can view or
-edit" > add **Asha** > **Apply**.
+Confluence tab: **•••** > **Restrictions** > "Only specific people can view or edit" > add **Asha** > **Apply**.
+Back to the app, same question as Ravi.
 
-> I've restricted the page in Confluence. We reindex nothing.
-
-App, same question as Ravi.
-
-> Gone, on the very next question. In our measured live run that took 0.27 seconds, and it never
-> came back. Asha still sees it, because Confluence still allows her.
+> I restrict the page in Confluence, with no reindexing, and on his very next question it's gone.
 
 **After recording:** remove the restriction.
 
-## 4:55 to 5:35 · Slide 7 (audit) + LIVE DEMO C · P
+## 3:30 to 4:05 · Slide 7 (audit) + LIVE DEMO C · P
 
-Slide 7, let the chain animation break once.
-
-> Every decision is hash-chained. Edit one row and every link after it breaks. And no checkpoint, no
-> answer: if we can't record it on two write-once stores, the user gets a refusal, never an
-> unrecorded answer.
-
-App as **Priya Nair**, open **/compliance**, type:
+App as **Priya Nair**, **/compliance**, type:
 **"Show me everything user 'ravi' accessed related to the 'payment-gateway' Confluence space in the last 30 days"**
 
-> Priya from compliance asks in plain English and gets each request: the question, every
-> per-document decision, and the answer. Ravi was allowed the first time and denied after the
-> restriction.
+> Compliance asks in plain English and sees every request, every decision and every answer, all
+> hash-chained. And no checkpoint, no answer.
 
-## 5:35 to 5:50 · Slide 8 (proof, live) · M
+## 4:05 to 4:30 · Slides 8, 9, 10 (proof) · M, P, I
 
-> On a real Atlassian Cloud site: 84 of 84 permission decisions matched Atlassian, 14 of 14 brief
-> scenarios passed, and 21 of 21 lifecycle steps, including an inherited page restriction.
+> **M:** On a real Atlassian site, 84 of 84 permission decisions matched Atlassian.
+> **P:** Under load, 25 users for five minutes, zero leaks and zero audit gaps.
+> **I:** With a real model, 71 of 78 cases and zero unauthorized citations.
 
-## 5:50 to 6:00 · Slide 9 (proof, under load) · P
+## 4:30 to 4:50 · Slide 11 (Tencent ecosystem) · P
 
-> Under load, 25 users for five minutes: 19,223 answers, zero permission leaks, zero audit gaps.
+> Built with CodeBuddy, usable inside WorkBuddy through our MCP connector, Hunyuan-ready, and
+> packaged for Tencent Cloud.
 
-## 6:00 to 6:10 · Slide 10 (proof, answer quality) · I
+## 4:50 to 5:15 · How we built it with CodeBuddy / WorkBuddy · all three, ~8 s each
 
-> And with a real model in the loop: 71 of 78 evaluation cases, zero unauthorized citations, ten of
-> ten attacks resisted. Every number has a date and a label: live, fixture or synthetic.
+Show your CodeBuddy or WorkBuddy screenshot. **Say only what you actually did**, one sentence each:
+what you used it for, and one tip.
 
-## 6:10 to 6:40 · Slide 11 (Tencent ecosystem) · P
+- M: [fill in]
+- I: [fill in]
+- P: [fill in]
 
-> YieldGPT is built for Tencent's ecosystem. We built it with CodeBuddy. It runs inside WorkBuddy:
-> an MCP connector lets you ask YieldGPT from a WorkBuddy or CodeBuddy chat, with every permission
-> check still applied. Hunyuan drops in through the same OpenAI-compatible interface. And it's
-> packaged for Tencent Cloud, where COS makes a natural second write-once anchor.
+## 5:15 to 5:30 · Slides 12 and 13 (close) · M
 
-If the WorkBuddy connector is merged, cut in a 5-second clip of a WorkBuddy chat asking YieldGPT.
-
-## 6:40 to 7:10 · How we built it with CodeBuddy / WorkBuddy · all three, ~10 s each
-
-Show one real CodeBuddy or WorkBuddy chat screenshot per person (the same ones submitted as proof).
-**Say only what you actually did.** Outline to fill in:
-
-- **What we asked it to do** (one concrete task each).
-  M: [your CodeBuddy task on connectors or permission checks]
-  I: [your task on retrieval, answers or the UI]
-  P: [your task on the audit trail, checkpoints or the WorkBuddy connector]
-- **What worked** (one sentence each). [fill in]
-- **One tip for other developers** (one sentence each). [fill in]
-
-A team line, true for us:
-
-> We split the build into three owners with no shared files, so our coding agents could work in
-> parallel without stepping on each other, and every change had to pass the full test suite first.
-
-## 7:10 to 7:30 · Slides 12 and 13 (honest status, close) · M
-
-> What's live and verified: Confluence and Jira on a real site, real model answers checked sentence
-> by sentence, write-once checkpoints, and the full test suite on every pull request. Next: Hunyuan
-> benchmarked on our evaluation, live Slack and Drive, and a public URL on Tencent Cloud.
->
-> YieldGPT. Ask once. See only what you may. Prove it afterwards.
+> Confluence and Jira are live, answers are checked, and Hunyuan, live Slack and Drive come next.
+> YieldGPT: ask once, see only what you may, and prove it afterwards.
 
 ---
 
